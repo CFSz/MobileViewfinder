@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Title</title>
+  <style>
+    .hide {
+      display: none;
+    }
+
+    #bgCanvas, #viewCanvas {
+      position: absolute;
+      left: 0;
+      top: 0;
+    }
+
+    #uploadImage {
+      position: absolute;
+      left: 0;
+      top: 0;
+      z-index: 3;
+    }
+
+    #viewCanvas {
+      z-index: 2;
+    }
+
+    .hide {
+      display: none;
+    }
+
+    body {
+      background: #000;
+    }
+  </style>
+
+</head>
+<body>
+<script src="lib/touch.js"></script>
+<script>
+  var canvasNode = document.createElement("div");
+  canvasNode.innerHTML = '<canvas id="bgCanvas" width="' + window.innerWidth + '" height="' + window.innerHeight + '"></canvas>' +
+      '<canvas id="viewCanvas" width="' + window.innerWidth + '" height="' + window.innerHeight + '"></canvas>' +
+      '<canvas id="uploadCanvas" class="hide"></canvas>' +
+      '<canvas id="joinCanvas" class="hide"></canvas>';
+
+  document.body.appendChild(canvasNode);
+  {/*取景框对象*/
+    window.PicShot = function (bSrc, vSrc, jSrc,jPoses) {
+      this.joinPoses=jPoses;
+      this.bgImage = new Image();
+      this.bgImage.src = bSrc;
+      this.viewImage = new Image();
+      this.viewImage.src = vSrc;
+      this.joinImage=new Image();
+      this.joinImage.src=jSrc;
+
+      this.bgPos = {x: 0, y: 0};
+      this.bgSize = {width: 0, height: 0};
+      this.bgCanvas = document.querySelector('#bgCanvas');
+      this.bgCtx = this.bgCanvas.getContext("2d");
+
+      this.viewPos = {x: 0, y: 0};
+      this.viewSize = {width: 0, height: 0};
+      this.viewBgColor = 'rgba(0,0,0,0.5)';
+      this.viewCanvas = document.querySelector('#viewCanvas');
+      this.viewCtx = this.viewCanvas.getContext("2d");
+
+      this.uploadCanvas = document.querySelector('#uploadCanvas');
+      this.uploadCtx = this.uploadCanvas.getContext("2d");
+
+      this.joinCanvas = document.querySelector('#joinCanvas');
+      this.joinCtx = this.joinCanvas.getContext("2d");
+
+      this.initialScale = 1;
+      this.currentScale = 1;
+      this.initialRotation = 0;
+      this.currentRotation = 0;
+      this.initialTranslate = [0, 0];
+      this.currentTranslate = [0, 0];
+
+      this.StartWithLoadPic();
+    };
+    PicShot.prototype.BindTouch = function () {
+      (function (obj) {
+        {/*绑定touchJS事件*/
+          touch.on('#viewCanvas', 'touchstart', function (ev) {
+            ev.preventDefault();
+          });
+          touch.on('#viewCanvas', 'pinchstart', function (ev) {
+            obj.currentRotation = 0;
+            obj.currentScale = 1;
+          });
+          touch.on('#viewCanvas', 'pinch', function (ev) {
+            {
+              obj.bgCtx.rotate((ev.rotation * 1.4 - obj.currentRotation) * Math.PI / 180);
+              obj.initialRotation += ev.rotation * 1.4 - obj.currentRotation;
+              obj.currentRotation = ev.rotation * 1.4;
+            }
+            obj.bgCtx.clearRect(-99999, -99999, 999999, 999999);
+            obj.bgCtx.scale((ev.scale / obj.currentScale), (ev.scale / obj.currentScale));
+            obj.initialScale *= ev.scale / obj.currentScale;
+            obj.currentScale = ev.scale;
+
+            obj.DrawBg();
+          });
+          touch.on('#viewCanvas', 'pinchend', function (ev) {
+          obj.ShotScreen();
+//                        console.log("当前缩放比例为:" + obj.currentScale + ".");
+//                        console.log("当前旋转角度为:" + obj.initialRotation + ".");
+          });
+          touch.on('#viewCanvas', 'dragstart', function (ev) {
+            obj.currentTranslate = [ev.x, ev.y];
+          });
+          touch.on('#viewCanvas', 'drag', function (ev) {
+            var disX = ev.x * Math.cos(obj.initialRotation * Math.PI / 180) + ev.y * Math.sin(obj.initialRotation * Math.PI / 180);
+            var disY = ev.y * Math.cos(obj.initialRotation * Math.PI / 180) - ev.x * Math.sin(obj.initialRotation * Math.PI / 180);
+            obj.bgCtx.translate((disX - obj.currentTranslate[0]) / Math.sqrt(obj.currentScale), (disY - obj.currentTranslate[1]) / Math.sqrt(obj.currentScale));
+            obj.currentTranslate[0] = disX;
+            obj.currentTranslate[1] = disY;
+            obj.DrawBg();
+          });
+          touch.on('#viewCanvas', 'dragend', function (ev) {
+            disX = ev.x * Math.cos(obj.initialRotation * Math.PI / 180) + ev.y * Math.sin(obj.initialRotation * Math.PI / 180);
+            disY = ev.y * Math.cos(obj.initialRotation * Math.PI / 180) - ev.x * Math.sin(obj.initialRotation * Math.PI / 180);
+            obj.initialTranslate[0] = obj.currentTranslate[0];
+            obj.initialTranslate[1] = obj.currentTranslate[1];
+            obj.ShotScreen();
+          });
+        }
+      })(this);
+    };
+    PicShot.prototype.InitAll = function () {
+      this.InitCanvas();
+      this.ResetBg(-window.innerWidth / 2, -window.innerHeight / 2, window.innerWidth, window.innerHeight);
+      this.bgCtx.translate(window.innerWidth / 2, window.innerHeight / 2);
+      this.InitView(window.innerWidth / 2 - this.viewImage.width, window.innerHeight / 2 - this.viewImage.height,
+          this.viewImage.width, this.viewImage.height, this.viewCtx, this.viewImage);
+      this.DrawBg();
+//            this.ShotScreen();
+      this.BindTouch();
+    };
+    PicShot.prototype.DrawBg = function () {
+      var bgWidth = window.innerWidth;//*this.currentScale
+      var bgHeight = window.innerHeight;//*this.currentScale
+      this.bgCtx.clearRect(-99999, -99999, 999999, 999999);
+      this.bgCtx.drawImage(this.bgImage, -bgWidth / 2, -bgHeight / 2, bgWidth, bgHeight);
+    };
+    PicShot.prototype.ResetBg = function (x, y, w, h) {
+      this.bgPos.x = x;
+      this.bgPos.y = y;
+      this.bgSize.width = w;
+      this.bgSize.height = h;
+    };
+    PicShot.prototype.InitCanvas = function () {
+      this.uploadCanvas.width = this.viewImage.width;
+      this.uploadCanvas.height = this.viewImage.height;
+      this.viewCanvas.width = this.bgCanvas.width = window.innerWidth;
+      this.viewCanvas.height = this.bgCanvas.height = window.innerHeight;
+      this.joinCanvas.width=this.joinImage.width;
+      this.joinCanvas.height=this.joinImage.height;
+      this.joinCtx.drawImage(this.joinImage,0,0,this.joinImage.width,this.joinImage.height);
+    };
+    PicShot.prototype.InitView = function (x, y, w, h) {
+      this.viewPos.x = x;//window.innerWidth/2-viewImage.width
+      this.viewPos.y = y;//window.innerHeight/2-viewImage.height
+      this.viewSize.width = w;
+      this.viewSize.height = h;
+      this.viewCtx.fillStyle = this.viewBgColor;
+      this.viewCtx.fillRect(0, 0, window.innerWidth, window.innerHeight);
+      this.viewCtx.clearRect(this.viewPos.x, this.viewPos.y, this.viewImage.width, this.viewImage.height);
+      this.viewCtx.drawImage(this.viewImage, this.viewPos.x, this.viewPos.y, this.viewImage.width, this.viewImage.height);
+    };
+    PicShot.prototype.ShotScreen = function () {
+      var bgImgData = this.bgCtx.getImageData(this.viewPos.x, this.viewPos.y, this.viewImage.width, this.viewImage.height);
+      var viewImgData = this.viewCtx.getImageData(this.viewPos.x, this.viewPos.y, this.viewImage.width, this.viewImage.height);
+      var joinImgData=this.joinCtx.getImageData(100,100,this.viewImage.width,this.viewImage.height);
+
+      for (var i = 0; i < viewImgData.data.length; i = i + 4) {
+        if (viewImgData.data[i + 3] != 0) {
+          bgImgData.data[i + 3] = 0;
+        }
+        else {
+          joinImgData.data[i+0]=bgImgData.data[i+0];
+          joinImgData.data[i+1]=bgImgData.data[i+1];
+          joinImgData.data[i+2]=bgImgData.data[i+2];
+          joinImgData.data[i+3]=bgImgData.data[i+3];
+        }
+      }
+      this.viewCtx.putImageData(bgImgData,0,0);
+      this.uploadCtx.putImageData(bgImgData, 0, 0);
+      var cutImgUrl = uploadCanvas.toDataURL("image/png");
+      var cutImgDom = document.createElement('IMG');
+      cutImgDom.src = cutImgUrl;
+      this.uploadImgUrl=cutImgUrl;
+      console.log(cutImgUrl);
+//            document.body.appendChild(cutImgDom);
+      {//拼接图片
+//        for(var i=0;i<this.joinPoses.length;i++){
+//          this.JoinPic(this.joinPoses[0].x,this.joinPoses[0].y,this.joinPoses[0].agl,cutImgDom);
+//        }
+//
+//        var joinImgUrl=this.joinCanvas.toDataURL("image/png");
+//        var joinImgDom=document.createElement('IMG');
+//        joinImgDom.src=joinImgUrl;
+//        document.body.appendChild(joinImgDom);
+      }
+
+    };
+    PicShot.prototype.JoinPic = function (x, y, angel, img) {
+      this.joinCtx.translate(x + img.width / 2, y + img.height / 2);
+      this.joinCtx.rotate(angel * Math.PI / 180);
+      this.joinCtx.drawImage(img, -img.width / 2, -img.height / 2);
+      this.joinCtx.rotate(-angel * Math.PI / 180);
+      this.joinCtx.translate(-x - img.width / 2, -y - img.height / 2);
+    };
+    PicShot.prototype.StartWithLoadPic = function () {
+      (function (obj) {
+        {/*图像加载和初始化*/
+          obj.bgImage.onload = function () {
+            obj.flg1 = true;
+            if (obj.flg1 && obj.flg2 && obj.flg3) obj.InitAll();
+          };
+          obj.viewImage.onload = function () {
+            obj.flg2 = true;
+            if (obj.flg1 && obj.flg2 && obj.flg3) obj.InitAll();
+          };
+          obj.joinImage.onload=function(){
+            obj.flg3=true;
+            if(obj.flg1&&obj.flg2&&obj.flg3) obj.InitAll();
+          };
+        }
+      })(this);
+    };
+  }
+  /*实例化取景框对象*/
+  window.PicShotA = new PicShot('img/bg.png', 'img/viewfinder.png', 'img/join.png',[{x:100,y:100,agl:90},{x:400,y:100,agl:45},{x:700,y:100,agl:0}]);
+</script>
+</body>
+</html>
